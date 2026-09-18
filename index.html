@@ -152,7 +152,8 @@
     </div>
   </div>
   <footer>
-    © Copyrights 2026 Ny LARTHONGCHANH All Rights Reserved
+    Turns yellow at 5 minutes left, red at 1 minute left.<br>
+    Voice will announce "5 minutes left" and "Time is up" in Lao and English.
   </footer>
 </div>
 
@@ -204,13 +205,47 @@
   function playEndTone() { beep(660, 0.3, 0); beep(660, 0.3, 400); beep(880, 0.5, 800); }
 
   // ---- Voice (speech synthesis) alerts: Lao then English ----
-  function speak(text, lang, delay) {
+  // Most browsers/devices don't ship a Lao (lo) voice, so speaking Lao text
+  // falls back to a default (often English) voice, which mispronounces it.
+  // We look for an installed Lao voice first, then fall back to Thai
+  // (closer pronunciation for Lao script) before finally using the default.
+  let cachedVoices = [];
+  function refreshVoices() {
+    if ('speechSynthesis' in window) {
+      cachedVoices = window.speechSynthesis.getVoices() || [];
+    }
+  }
+  refreshVoices();
+  if ('speechSynthesis' in window && 'onvoiceschanged' in window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = refreshVoices;
+  }
+  function findVoice(preferredPrefixes) {
+    for (const prefix of preferredPrefixes) {
+      const match = cachedVoices.find(v => v.lang && v.lang.toLowerCase().startsWith(prefix));
+      if (match) return match;
+    }
+    return null;
+  }
+  function speak(text, lang, delay, fallback) {
+    // fallback: optional { prefix: 'th', text: 'same meaning written in Thai script' }
     if (!voiceToggle.checked) return;
     if (!('speechSynthesis' in window)) return;
     setTimeout(() => {
       try {
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = lang;
+        const laoVoice = findVoice([lang.toLowerCase()]);
+        let spokenText = text;
+        let voice = laoVoice;
+        if (!voice && fallback) {
+          voice = findVoice([fallback.prefix]);
+          if (voice) spokenText = fallback.text; // Lao script isn't readable by a Thai voice, so swap in the Thai-script equivalent
+        }
+        const utter = new SpeechSynthesisUtterance(spokenText);
+        if (voice) {
+          utter.voice = voice;
+          utter.lang = voice.lang;
+        } else {
+          utter.lang = lang;
+        }
         utter.rate = 0.95;
         utter.pitch = 1;
         window.speechSynthesis.speak(utter);
@@ -218,16 +253,16 @@
     }, delay || 0);
   }
   function announceFiveMinLeft() {
-    // Lao first, then English
-    speak('ເຫຼືອເວລາ 5 ນາທີ', 'lo-LA', 0);
+    // Lao voice if installed; otherwise a Thai voice reading the Thai-script equivalent
+    speak('ເຫຼືອເວລາ 5 ນາທີ', 'lo-LA', 0, { prefix: 'th', text: 'เหลือเวลา 5 นาที' });
     speak('Five minutes remaining', 'en-US', 2200);
   }
   function announceOneMinLeft() {
-    speak('ເຫຼືອເວລາ 1 ນາທີ', 'lo-LA', 0);
+    speak('ເຫຼືອເວລາ 1 ນາທີ', 'lo-LA', 0, { prefix: 'th', text: 'เหลือเวลา 1 นาที' });
     speak('One minute remaining', 'en-US', 2000);
   }
   function announceTimeUp() {
-    speak('ໝົດເວລາແລ້ວ', 'lo-LA', 0);
+    speak('ໝົດເວລາແລ້ວ', 'lo-LA', 0, { prefix: 'th', text: 'หมดเวลาแล้ว' });
     speak('Time is up', 'en-US', 2000);
   }
 
